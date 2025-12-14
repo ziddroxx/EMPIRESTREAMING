@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EMPIRE STREAMING</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
@@ -95,43 +95,6 @@
       background: #E50914;
       color: #fff;
     }
-
-    /* ===== Mobile Hero Fixes ===== */
-    .hero-title{
-      font-size: clamp(34px, 9vw, 72px);
-      line-height: 1.02;
-      letter-spacing: -0.02em;
-      word-break: break-word;
-    }
-    .hero-meta{
-      font-size: clamp(13px, 3.2vw, 16px);
-    }
-    .hero-desc{
-      font-size: clamp(14px, 3.6vw, 18px);
-      line-height: 1.55;
-      max-width: 62ch;
-    }
-    /* Clamp description on mobile to avoid huge blocks */
-    @media (max-width: 768px){
-      .hero-desc{
-        display: -webkit-box;
-        -webkit-line-clamp: 6;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-      }
-      .hero-desc.is-open{
-        -webkit-line-clamp: unset;
-        overflow: visible;
-      }
-      /* Better overlay for mobile readability */
-      .hero-gradient{
-        background: linear-gradient(180deg,
-          rgba(20,20,20,0.10) 0%,
-          rgba(20,20,20,0.75) 55%,
-          rgba(20,20,20,1) 100%);
-      }
-    }
-
   </style>
 </head>
 <body>
@@ -242,7 +205,7 @@
     </div>
   </header>
 
-  <section class="relative min-h-[100svh]">
+  <section class="relative h-screen">
     <div class="absolute inset-0">
       <img id="heroImage" src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=1920&q=80" 
            alt="Hero" class="w-full h-full object-cover">
@@ -250,17 +213,17 @@
       <div class="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent"></div>
     </div>
 
-    <div class="relative container mx-auto px-6 h-full flex items-end md:items-center">
-      <div class="max-w-2xl space-y-5 pt-24 md:pt-20 pb-10 md:pb-0">
+    <div class="relative container mx-auto px-6 h-full flex items-center">
+      <div class="max-w-2xl space-y-6 pt-20">
         <div id="heroGenre" class="inline-flex items-center space-x-2 bg-red-600/20 border border-red-600 px-4 py-2 rounded-full">
           <span class="text-red-400 font-semibold text-sm">Action</span>
         </div>
 
-        <h2 id="heroTitle" class="font-bold hero-title netflix-glow">
+        <h2 id="heroTitle" class="font-bold text-6xl md:text-7xl leading-tight netflix-glow">
           L'Empire des Ombres
         </h2>
 
-        <div id="heroMeta" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-300 hero-meta">
+        <div id="heroMeta" class="flex items-center space-x-4 text-sm text-gray-300">
           <span class="text-red-400 font-bold">8.5/10</span>
           <span>•</span>
           <span>2024</span>
@@ -268,14 +231,10 @@
           <span>2h 30min</span>
         </div>
 
-        <p id="heroDesc" class="text-gray-300 hero-desc">
+        <p id="heroDesc" class="text-lg text-gray-300 leading-relaxed max-w-xl">
           Dans un futur dystopique, un groupe de rebelles affronte un empire totalitaire. 
           Entre trahisons et combats épiques, ils découvrent des secrets qui changeront le destin du monde.
         </p>
-
-        <button id="heroMore" onclick="toggleHeroDesc()" class="md:hidden text-sm text-gray-200 underline underline-offset-4 opacity-90 hover:opacity-100">
-          Lire plus
-        </button>
 
         <div class="flex items-center space-x-4">
           <button onclick="playHero()" class="netflix-gradient px-8 py-4 rounded-lg font-bold flex items-center space-x-2 hover:opacity-90 transition-opacity">
@@ -673,33 +632,26 @@ const DEFAULT_CONTENT = [
 // Content is stored server-side (content.json) through api.php when available.
 // Fallback to localStorage if the backend isn't reachable (e.g., opening the file directly).
 async function getContent() {
-  // 1) Try backend first (works on XAMPP/PHP)
+  // Try backend first
   try {
     const r = await fetch(API_URL, { cache: 'no-store' });
     if (!r.ok) throw new Error('GET failed');
     const data = await r.json();
-    if (Array.isArray(data) && data.length) return data;
-    throw new Error('empty');
+
+    if (!Array.isArray(data) || data.length === 0) {
+      // Initialize once with defaults
+      await setContent(DEFAULT_CONTENT);
+      return DEFAULT_CONTENT;
+    }
+    return data;
   } catch (e) {
-    // 2) On Vercel (no PHP): read static content.json if present
-    try {
-      const r2 = await fetch('./content.json', { cache: 'no-store' });
-      if (r2.ok) {
-        const data2 = await r2.json();
-        if (Array.isArray(data2) && data2.length) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(data2));
-          return data2;
-        }
-      }
-    } catch (e2) {}
-
-    // 3) Fallback: localStorage
+    // Fallback: localStorage
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
-
-    // 4) Final fallback: defaults
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_CONTENT));
-    return DEFAULT_CONTENT;
+    if (!stored) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_CONTENT));
+      return DEFAULT_CONTENT;
+    }
+    return JSON.parse(stored);
   }
 }
 
@@ -1137,16 +1089,7 @@ function closePlayer() {
   document.getElementById('playerIframe').src = '';
 }
 
-async 
-function toggleHeroDesc(){
-  const desc = document.getElementById('heroDesc');
-  const btn  = document.getElementById('heroMore');
-  if (!desc || !btn) return;
-  desc.classList.toggle('is-open');
-  btn.textContent = desc.classList.contains('is-open') ? 'Réduire' : 'Lire plus';
-}
-
-function playHero() {
+async function playHero() {
   const content = await getContent();
   const featured = content.find(c => c.featured) || content[0];
   if (featured) {
