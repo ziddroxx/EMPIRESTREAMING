@@ -696,7 +696,8 @@ async function getContent() {
 }
 
 async function setContent(data) {
-  // Try backend first
+  // Always try backend first (api.php -> content.json)
+  const isAdmin = (getCurrentUser() && getCurrentUser().role === 'admin');
   try {
     const r = await fetch(API_URL, {
       method: 'POST',
@@ -704,9 +705,14 @@ async function setContent(data) {
       body: JSON.stringify(data, null, 2)
     });
     if (!r.ok) throw new Error('POST failed');
+    return true;
   } catch (e) {
-    // Fallback: localStorage
+    // Admin actions should not silently fall back to localStorage
+    if (isAdmin) throw e;
+
+    // Fallback for offline / static mode (read-only website)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    return false;
   }
 }
 
@@ -1111,7 +1117,12 @@ async function importBulkFromJson() {
 
   // Ajoute en tête en conservant l'ordre du JSON
   const merged = [...newItems, ...existing];
-  await setContent(merged);
+  try {
+    await setContent(merged);
+  } catch (e) {
+    showToast('❌ Impossible d\'écrire dans content.json (API backend KO ou droits d\'écriture). Lance le site via XAMPP (http://localhost/...) et vérifie les permissions de content.json.', 'error');
+    return;
+  }
 
   closeBulkModal();
   showToast(`✅ Import OK : ${added} ajouté(s) • ${skipped} doublon(s) ignoré(s) • ${invalid} invalide(s)`, 'success');
@@ -1179,9 +1190,12 @@ async function saveContent(e) {
     content.unshift(newItem);
     showToast('✅ Contenu ajouté avec succès !');
   }
-
-
-  await setContent(content);
+  try {
+    await setContent(content);
+  } catch (e) {
+    showToast('❌ Sauvegarde impossible : écriture content.json refusée (backend KO / permissions).', 'error');
+    return;
+  }
   closeAddModal();
   await renderPanel();
   await renderSite(); // Update site immediately
@@ -1192,7 +1206,12 @@ async function deleteContent(id) {
   
   const content = await getContent();
   const filtered = content.filter(c => c.id !== id);
-  await setContent(filtered);
+  try {
+    await setContent(filtered);
+  } catch (e) {
+    showToast('❌ Suppression impossible : écriture content.json refusée (backend KO / permissions).', 'error');
+    return;
+  }
   
   showToast('🗑️ Contenu supprimé');
   await renderPanel();
@@ -1207,7 +1226,12 @@ async function openPlayerModal(id) {
 
   // Increment views
   item.views = (item.views || 0) + 1;
-  await setContent(content);
+  try {
+    await setContent(content);
+  } catch (e) {
+    showToast('❌ Sauvegarde impossible : écriture content.json refusée (backend KO / permissions).', 'error');
+    return;
+  }
 
   document.getElementById('playerTitle').textContent = item.title;
   document.getElementById('playerMeta').innerHTML = `
