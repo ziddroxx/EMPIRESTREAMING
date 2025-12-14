@@ -723,6 +723,20 @@ function showPage(pageId) {
   document.getElementById(pageId).classList.add('active');
 }
 
+function openLogin() {
+  // Ferme le menu
+  const menu = document.getElementById('userMenu');
+  if (menu) menu.classList.add('hidden');
+
+  // Ouvre la page login
+  showPage('loginPage');
+
+  // Optionnel : scroll en haut et focus
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(() => document.getElementById('loginEmail')?.focus(), 100);
+}
+
+
 async function initSite() {
   const user = getCurrentUser();
 
@@ -1030,59 +1044,45 @@ async function openPlayerModal(id) {
     ${item.year} • ${item.duration} • ${item.genre}
   `;
   document.getElementById('playerDesc').textContent = item.desc;
+
   const iframe = document.getElementById('playerIframe');
-const url = item.video;
+  if (!iframe) return;
 
-iframe.removeAttribute('sandbox');
-iframe.removeAttribute('referrerpolicy');
+  const url = item.video;
 
-try {
-  const host = new URL(url).hostname;
+  // Reset iframe
+  iframe.src = '';
+  iframe.removeAttribute('sandbox');
+  iframe.removeAttribute('referrerpolicy');
 
-const iframe = document.getElementById('playerIframe');
-if (!iframe) return;
+  // (Optionnel) sandbox selon le host
+  try {
+    const host = new URL(url).hostname;
+    const noSandboxHosts = ['frembed', 'uqload'];
+    const mustDisableSandbox = noSandboxHosts.some(h => host.includes(h));
 
-const url = item.video;
-
-// reset total
-iframe.removeAttribute('sandbox');
-iframe.removeAttribute('referrerpolicy');
-
-try {
-  const host = new URL(url).hostname;
-
-  // lecteurs qui REFUSENT le sandbox
-  const noSandboxHosts = [
-    'frembed',
-    'uqload'
-  ];
-
-  const mustDisableSandbox = noSandboxHosts.some(h => host.includes(h));
-
-  if (!mustDisableSandbox) {
-    iframe.setAttribute(
-      'sandbox',
-      'allow-scripts allow-same-origin allow-forms allow-presentation'
-    );
+    if (!mustDisableSandbox) {
+      iframe.setAttribute(
+        'sandbox',
+        'allow-scripts allow-same-origin allow-forms allow-presentation'
+      );
+    }
+  } catch (e) {
+    // si URL invalide, on ignore
   }
-} catch (e) {}
 
-iframe.src = url;
-} catch (e) {}
-
-iframe.src = url;
-
+  iframe.src = url;
 
   document.getElementById('playerModal').classList.remove('hidden');
-  
   showToast('▶️ Lecture en cours');
-  
-  // Update stats if on panel
+
+  // Update stats si panel actif
   if (document.getElementById('panelPage').classList.contains('active')) {
     await renderStats();
     await renderContentTable();
   }
 }
+
 
 function closePlayer() {
   document.getElementById('playerModal').classList.add('hidden');
