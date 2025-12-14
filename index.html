@@ -300,6 +300,9 @@
             <button onclick="openAddModal()" class="netflix-gradient px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity netflix-shadow">
               ➕ Ajouter du contenu
             </button>
+            <button onclick="openBulkModal()" class="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg transition-colors">
+              📥 Ajout Bulk
+            </button>
             <button onclick="closePanel()" class="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg transition-colors">
               ← Retour au site
             </button>
@@ -487,6 +490,43 @@
     </form>
   </div>
 </div>
+
+<div id="bulkModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
+  <div class="bg-gray-900 rounded-xl w-full max-w-5xl mx-4 max-h-[90vh] overflow-y-auto scrollbar-thin border border-gray-700">
+    <div class="sticky top-0 bg-gray-900 border-b border-gray-700 p-6 flex items-center justify-between z-10">
+      <h2 class="text-2xl font-bold text-red-500">📥 Ajout en bulk (JSON)</h2>
+      <button onclick="closeBulkModal()" class="text-gray-400 hover:text-white text-2xl">✕</button>
+    </div>
+
+    <div class="p-6 space-y-4">
+      <p class="text-sm text-gray-400">
+        Colle ici un JSON <b>tableau</b> d'objets (comme ton exemple). Les doublons déjà présents sur le site seront ignorés (par <b>id</b> ou <b>titre+année+type</b>).
+      </p>
+
+      <textarea id="bulkJson" rows="14" placeholder='[ { "id": "...", "title": "...", ... } ]'
+        class="w-full bg-gray-800 border border-gray-700 rounded-lg p-4 font-mono text-sm"></textarea>
+
+      <div class="flex items-center justify-between gap-3">
+        <div class="text-xs text-gray-500">
+          Champs conseillés : id, title, type (Film/Série), genre, year, rating, duration, image, heroImage, desc, video.
+        </div>
+        <button onclick="pasteExampleBulk()" class="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-lg text-sm border border-gray-700">
+          📋 Coller un exemple
+        </button>
+      </div>
+
+      <div class="flex items-center justify-end space-x-4 pt-4 border-t border-gray-700">
+        <button onclick="closeBulkModal()" class="bg-gray-700 hover:bg-gray-600 px-6 py-3 rounded-lg">
+          Annuler
+        </button>
+        <button onclick="importBulkFromJson()" class="netflix-gradient px-6 py-3 rounded-lg font-semibold hover:opacity-90">
+          🚀 Importer
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <div id="playerModal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-backdrop">
   <div class="bg-black rounded-xl w-full max-w-6xl mx-4 max-h-[90vh] overflow-y-auto scrollbar-thin">
@@ -948,6 +988,137 @@ function openAddModal() {
 function closeAddModal() {
   document.getElementById('addModal').classList.add('hidden');
 }
+
+
+// ========================= BULK IMPORT (JSON) =========================
+function openBulkModal() {
+  if (!isAdmin()) {
+    showToast('❌ Accès refusé : Admin seulement', 'error');
+    return;
+  }
+  document.getElementById('bulkJson').value = '';
+  document.getElementById('bulkModal').classList.remove('hidden');
+}
+
+function closeBulkModal() {
+  document.getElementById('bulkModal').classList.add('hidden');
+}
+
+function pasteExampleBulk() {
+  const ex = [
+    {
+      id: "2070837848294",
+      title: "Running Man",
+      type: "Film",
+      genre: "Action, Thriller, Science-Fiction",
+      year: 2025,
+      rating: 6.8,
+      duration: "2h 13min",
+      image: "https://image.tmdb.org/t/p/w500/3tbnGsJpxtndRkxHeq3uq7VymzI.jpg",
+      heroImage: "https://image.tmdb.org/t/p/original/aHj7d7wSLqrg5cjAcgHhiGr97Ih.jpg",
+      desc: "Synopsis...",
+      video: "https://frembed.my/api/film.php?id=798645",
+      views: 0,
+      featured: false
+    }
+  ];
+  document.getElementById('bulkJson').value = JSON.stringify(ex, null, 2);
+}
+
+function normalizeType(t) {
+  const x = (t || '').toString().trim().toLowerCase();
+  if (x === 'film' || x === 'movie') return 'Film';
+  if (x === 'série' || x === 'serie' || x === 'series' || x === 'tv' || x === 'show') return 'Série';
+  return (t || '').toString().trim();
+}
+
+function makeKey(item) {
+  const title = (item.title || '').toString().trim().toLowerCase();
+  const year = (item.year ?? '').toString().trim();
+  const type = (item.type || '').toString().trim().toLowerCase();
+  return `${title}__${year}__${type}`;
+}
+
+async function importBulkFromJson() {
+  let raw = document.getElementById('bulkJson').value.trim();
+  if (!raw) {
+    showToast('❌ Colle un JSON avant d\'importer', 'error');
+    return;
+  }
+
+  // Autoriser un objet seul au lieu d'un tableau
+  let incoming;
+  try {
+    incoming = JSON.parse(raw);
+    if (!Array.isArray(incoming)) incoming = [incoming];
+  } catch (e) {
+    showToast('❌ JSON invalide (vérifie les virgules, guillemets, crochets)', 'error');
+    return;
+  }
+
+  const existing = await getContent();
+  const ids = new Set(existing.map(x => (x.id || '').toString()));
+  const keys = new Set(existing.map(x => makeKey(x)));
+
+  let added = 0, skipped = 0, invalid = 0;
+  const newItems = [];
+
+  for (const it of incoming) {
+    if (!it || typeof it !== 'object') { invalid++; continue; }
+
+    const item = { ...it };
+
+    // Normalisation & defaults
+    item.id = (item.id ?? '').toString().trim();
+    item.title = (item.title ?? '').toString().trim();
+    item.type = normalizeType(item.type);
+    item.genre = (item.genre ?? '').toString().trim();
+    item.year = Number.isFinite(Number(item.year)) ? parseInt(item.year) : NaN;
+    item.rating = Number.isFinite(Number(item.rating)) ? parseFloat(item.rating) : NaN;
+    item.duration = (item.duration ?? '').toString().trim();
+    item.image = (item.image ?? '').toString().trim();
+    item.heroImage = (item.heroImage ?? '').toString().trim() || item.image;
+    item.desc = (item.desc ?? '').toString().trim();
+    item.video = (item.video ?? '').toString().trim();
+
+    // Validation minimale
+    const missing =
+      !item.id || !item.title || !item.type || !item.genre ||
+      !Number.isFinite(item.year) || !Number.isFinite(item.rating) ||
+      !item.duration || !item.image || !item.desc || !item.video;
+
+    if (missing) { invalid++; continue; }
+
+    // Doublons (site + liste importée)
+    const key = makeKey(item);
+    if (ids.has(item.id) || keys.has(key)) { skipped++; continue; }
+
+    // Set defaults for site
+    item.views = Number.isFinite(Number(item.views)) ? parseInt(item.views) : 0;
+    item.featured = !!item.featured;
+
+    ids.add(item.id);
+    keys.add(key);
+
+    newItems.push(item);
+    added++;
+  }
+
+  if (added === 0) {
+    showToast(`ℹ️ Import terminé : 0 ajouté • ${skipped} doublon(s) • ${invalid} invalide(s)`, 'success');
+    return;
+  }
+
+  // Ajoute en tête en conservant l'ordre du JSON
+  const merged = [...newItems, ...existing];
+  await setContent(merged);
+
+  closeBulkModal();
+  showToast(`✅ Import OK : ${added} ajouté(s) • ${skipped} doublon(s) ignoré(s) • ${invalid} invalide(s)`, 'success');
+  await renderPanel();
+  await renderSite();
+}
+
 
 async function editContent(id) {
   const content = await getContent();
